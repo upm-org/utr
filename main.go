@@ -2,17 +2,17 @@ package main
 
 import (
 	"fmt"
-	"utr/tokenizer"
+	. "github.com/ump-org/utr/tokenizer"
+	"strings"
 )
 
 func main() {
-	//var a deb.SourcePackage
+	sll := &MultiLineLexeme{}
+	slfsm := MultiLineFSM(sll)
+	res := slfsm.Match(NewTokenReader(strings.NewReader(`OK: now its multi
+ line
+ just
+ as I said`), nil))
+	fmt.Println(res, *sll)
 
-	t, _ := tokenizer.New()
-	res, err := t.TokenizeFile("deb/nano/debian/control")
-	//err := a.ParseFile("deb/nano/debian/control")
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(res)
 }

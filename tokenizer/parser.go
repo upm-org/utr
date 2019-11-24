@@ -1,38 +1,9 @@
 package tokenizer
 
 import (
-	"bytes"
 	"errors"
 	"io"
-	"io/ioutil"
-	"strings"
 )
-
-// token represents a single token. Value is the data token
-// holds, tokenType represent it's type.
-type token struct {
-	value     string
-	tokenType int
-}
-
-// tokenFunc responds for tokenizing function.
-// Arguments: First parameter is RuneReader to read from,
-// Second parameter is amount of bytes to read
-//
-// Return values are set of string tokens, bytes read, error
-type tokenFunc func(io.RuneReader, int) ([]token, int, error)
-
-// clusterFunc is clustering tokens in different token groups.
-// Plays part in tokenFunc.
-type clusterFunc func(r rune) int
-
-type TokenizerOption func(*Tokenizer) error
-
-// Tokenizer holds tokenFunc
-type Tokenizer struct {
-	tokenFunc
-	clusterFunc
-}
 
 // Error definitions
 var (
@@ -43,140 +14,114 @@ var (
 const (
 	illegalToken = iota
 
-	spaceToken
-	commaToken
-	newLineToken
-	colonToken
-	notLetterToken
-	letterToken
+	SpaceToken
+	CommaToken
+	NewLineToken
+	ColonToken
+	NotLetterToken
+	LetterToken
 )
 
-// defaultClusterBytes responds for detecting token type
+// Token represents a single Token. Value is the data Token
+// holds, TokenType represent it's type.
+type Token struct {
+	Value     rune
+	TokenType int
+}
+
+type TokenReader interface {
+	Read(t []Token) (n int, err error)
+}
+
+type TokenOneReader interface {
+	ReadOne() (Token, error)
+}
+
+type TokenFullReader interface {
+	TokenReader
+	TokenOneReader
+
+	ReadAll() (t []Token, err error)
+}
+
+type clusterFunc func(r rune) int
+
+type defaultReader struct {
+	io.RuneReader
+
+	clusterFunc
+
+	position int
+}
+
+func (r *defaultReader) Read(t []Token) (n int, err error) {
+	n = 0
+
+	for n < len(t) {
+		rn, size, rnErr := r.ReadRune()
+		if rnErr != nil {
+			err = rnErr
+			return
+		}
+		n += size
+
+		t[r.position] = Token{rn, r.clusterFunc(rn)}
+		r.position++
+	}
+
+	return
+}
+
+func (r *defaultReader) ReadOne() (Token, error) {
+	rn, _, rnErr := r.ReadRune()
+	if rnErr != nil {
+		return Token{}, rnErr
+	}
+	res := Token{rn, r.clusterFunc(rn)}
+	r.position++
+	return res, nil
+}
+
+func (r *defaultReader) ReadAll() (res []Token, err error) {
+	var buff [256]Token
+	for err != io.EOF {
+		_, err = r.Read(buff[:])
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		res = append(res, buff[:]...)
+	}
+	return
+}
+
+// Cluster responds for detecting Token type
 func defaultClusterFunc(r rune) int {
 	switch {
 	case r == ' ':
-		return spaceToken
+		return SpaceToken
 	case r == ',':
-		return commaToken
+		return CommaToken
 	case r == '\n':
-		return newLineToken
+		return NewLineToken
 	case r == ':':
-		return colonToken
+		return ColonToken
 	case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
-		return letterToken
+		return LetterToken
 	default:
-		return notLetterToken
+		return NotLetterToken
 	}
 }
 
-// Clue clues nearby standing tokens with identical types.
-// Returns error if tokens amount provided is less then 2.
-func Clue(tokens []token) ([]token, error) {
-	var res []token
-	temp := tokens[0]
-
-	if len(tokens) < 2 {
-		return nil, errNotEnoughTokens
+func NewToken(r rune, f clusterFunc) Token {
+	if f != nil {
+		return Token{r, f(r)}
 	}
-
-	for i := 1; i < len(tokens); i++ {
-		t := tokens[i]
-
-		if temp.tokenType == t.tokenType {
-			temp.value += t.value
-		} else {
-			res = append(res, temp)
-			temp = t
-		}
-	}
-	return res, nil
+	return Token{r, defaultClusterFunc(r)}
 }
 
-// defaultTokenFunc is the default tokenizing function
-func defaultTokenFunc(reader io.RuneReader, n int) ([]token, int, error) {
-	const buffSize = 1
-	var tokens []token
-	read := 0
-
-	for read < n {
-		var t token
-
-		r, size, err := reader.ReadRune()
-		if err != nil {
-			return nil, 0, err
-		}
-		read += size
-
-		t.tokenType = defaultClusterFunc(r)
-		t.value = string(r)
-
-		tokens = append(tokens, t)
+func NewTokenReader(reader io.RuneReader, f clusterFunc) TokenFullReader {
+	if f != nil {
+		return &defaultReader{RuneReader: reader, clusterFunc: f}
 	}
-
-	res, err := Clue(tokens)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return res, read, nil
-}
-
-// NewTokenizer creates new Tokenizer
-func New(opts ...TokenizerOption) (*Tokenizer, error) {
-	t := &Tokenizer{
-		tokenFunc:   defaultTokenFunc,
-		clusterFunc: defaultClusterFunc,
-	}
-	for _, opt := range opts {
-		if err := opt(t); err != nil {
-			return nil, err
-		}
-	}
-	return t, nil
-}
-
-// TokenFunc sets f as a tokenizing function.
-func TokenFunc(f tokenFunc) TokenizerOption {
-	return func(t *Tokenizer) error {
-		t.tokenFunc = f
-		return nil
-	}
-}
-
-// ClusterFunc sets f as a clusterizing function.
-func ClusterFunc(f clusterFunc) TokenizerOption {
-	return func(t *Tokenizer) error {
-		t.clusterFunc = f
-		return nil
-	}
-}
-
-func (t *Tokenizer) TokenizeString(s string) ([]token, error) {
-	res, _, err := t.tokenFunc(strings.NewReader(s), len(s))
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-func (t *Tokenizer) TokenizeBytes(b []byte) ([]token, error) {
-	res, _, err := t.tokenFunc(bytes.NewBuffer(b), len(b))
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-func (t *Tokenizer) TokenizeFile(path string) ([]token, error) {
-	f, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := t.TokenizeBytes(f)
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
+	return &defaultReader{RuneReader: reader, clusterFunc: defaultClusterFunc}
 }

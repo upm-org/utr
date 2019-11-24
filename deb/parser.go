@@ -17,7 +17,7 @@ func (p *person) Parse(text string) {
 	p.email = sp[len(sp) - 1]
 }
 
-var lexemes []*lexeme
+var lexemes []*lexemlexe
 
 type SourcePackage struct {
 	source string
