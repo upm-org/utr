@@ -1,6 +1,6 @@
 package deb
 
-import (
+/*import (
 	"fmt"
 	"os"
 	"strings"
@@ -47,7 +47,7 @@ func (s *SourcePackage) ParseFile(path string) error {
 		if multiLineRegexp.MatchString(s) {
 			lexemes = append(lexemes, MultiLineLexeme(foldedRegexp.FindAllString(s, -1)))
 		}
-	}*/
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -80,4 +80,4 @@ type control struct {
 
 func parseControl() {
 
-}
+}*/
