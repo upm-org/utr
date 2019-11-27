@@ -115,7 +115,7 @@ func MatchWord(token rune) bool {
 	return MatchLetter(token) || token == '\'' || token == '.' || token == ','
 }
 
-func MatchValue(tokens... rune) func(rune) bool {
+func MatchValue(tokens ...rune) func(rune) bool {
 	return func(m rune) bool {
 		for _, t := range tokens {
 			if m == t {
