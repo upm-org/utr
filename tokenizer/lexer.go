@@ -2,7 +2,6 @@ package tokenizer
 
 import (
 	"errors"
-	"io"
 )
 
 type State struct {
@@ -21,14 +20,18 @@ var (
 
 func NewFSM(init *State) *FSM {
 	return &FSM{
+		initState:    init,
 		currentState: init,
+		finalState:   &State{},
 	}
 }
 
 type FSM struct {
+	initState    *State
 	currentState *State
+	finalState   *State
 	buffer       string
-	eofHandler   func()
+	finished     bool
 }
 
 func (f *FSM) AddTransition(src *State, dest *State, tf transFunc) {
@@ -48,6 +51,16 @@ func (f *FSM) AddBufferedTransition(src *State, dest *State, tf transFunc) {
 		}
 		return nil
 	})
+}
+
+func (f *FSM) AddFinalTransition(fn func(), srcs ...*State) {
+	for _, src := range srcs {
+		f.AddTransition(src, f.finalState, func(match rune) bool {
+			fn()
+			f.finished = true
+			return true
+		})
+	}
 }
 
 func (f *FSM) Flush() string {
@@ -74,33 +87,33 @@ func (f *FSM) nextState(t rune) error {
 	return nil
 }
 
-func (f *FSM) EOFHandler(fn func()) {
-	f.eofHandler = fn
+func (f *FSM) MatchAll(text string) bool {
+	f.Match(text)
+	return false
 }
 
-func (f *FSM) Match(r io.RuneReader) bool {
-	if f.run(r) != nil {
-		return false
+func (f *FSM) Match(text string) bool {
+	for ts := 0; ts < len(text); ts++ {
+		f.Flush()
+		f.currentState = f.initState
+		if f.run(text[ts:]) == nil {
+			return true
+		}
 	}
-	return true
+	return false
 }
 
-func (f *FSM) run(r io.RuneReader) error {
-	var err error
-	for err == nil {
-		var t rune
-		t, _, err = r.ReadRune()
-		if err == io.EOF {
-			f.eofHandler()
+func (f *FSM) run(text string) error {
+	for _, c := range text {
+		err := f.nextState(c)
+		if f.finished {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-
-		err = f.nextState(t)
 	}
-	return err
+	return nil
 }
 
 func MatchLetter(token rune) bool {
